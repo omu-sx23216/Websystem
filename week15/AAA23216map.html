@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AAA23216 Map (Week15)</title>
+
+    <!-- Leaflet -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+    <!-- Rainviewer -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/mwasil/Leaflet.Rainviewer/leaflet.rainviewer.css"
+    />
+    <script src="https://cdn.jsdelivr.net/gh/mwasil/Leaflet.Rainviewer/leaflet.rainviewer.js"></script>
+  </head>
+
+  <body>
+    <div id="map" style="height: 80vh"></div>
+
+    <script>
+      // =========================
+      // 地図の初期化
+      // =========================
+      const map = L.map("map", {
+        center: [34.544865, 135.506274], // 中百舌鳥付近
+        zoom: 14,
+      });
+
+      // =========================
+      // 背景地図
+      // =========================
+      const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+      });
+
+      const chiriinLayer = L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", {
+        maxZoom: 18,
+      });
+
+      // 初期表示
+      osmLayer.addTo(map);
+
+      // レイヤコントロール（空の状態で先に作る）
+      const baseLayers = {
+        OpenStreetMap: osmLayer,
+        "地理院地図（標準）": chiriinLayer,
+      };
+      const layerControl = L.control.layers(baseLayers, {}).addTo(map);
+
+      // スケールバー
+      L.control.scale().addTo(map);
+
+      // =========================
+      // 中百舌鳥・杉本（常に表示）
+      // =========================
+      L.marker([34.544865, 135.506274])
+        .bindPopup("なかもずキャンパス C棟")
+        .addTo(map);
+
+      L.marker([34.592331, 135.505276])
+        .bindPopup("杉本キャンパス")
+        .addTo(map);
+
+      // =========================
+      // ほかの学校（チェックでON/OFF）
+      // =========================
+      const otherSchools = L.layerGroup(); // チェック対象
+
+      // =========================
+      // 追加①：ルート（ライン）レイヤー
+      // =========================
+      fetch("./line.geojson")
+        .then((response) => response.json())
+        .then((data) => {
+          const routeLine = L.geoJSON(data, {
+            style: {
+              color: "#FF00FF",
+              weight: 6,
+              opacity: 0.65,
+            },
+          });
+
+          // 初期表示したいなら addTo(map)
+          routeLine.addTo(map);
+
+          // チェックボックスに追加
+          layerControl.addOverlay(routeLine, "ルート");
+        })
+        .catch((err) => console.error("line.geojson 読み込み失敗:", err));
+
+      // =========================
+      // 追加②：雨雲レイヤー（Rainviewer）
+      // =========================
+      L.control
+        .rainviewer({
+          position: "bottomleft",
+          nextButtonText: ">",
+          playStopButtonText: "Play/Stop",
+          prevButtonText: "<",
+          positionSliderLabelText: "Hour:",
+          opacitySliderLabelText: "Opacity:",
+          animationInterval: 500,
+          opacity: 0.5,
+        })
+        .addTo(map);
+
+      // =========================
+      // 追加③：行政区域レイヤー（堺市中区のみ）
+      // =========================
+      fetch("./N03-20230101_27_GML/N03-23_27_230101.geojson")
+        .then((response) => response.json())
+        .then((data) => {
+          const filteredFeatures = (data.features || []).filter(
+            (feature) => feature?.properties?.N03_004 === "堺市中区"
+          );
+
+          const filteredData = {
+            type: "FeatureCollection",
+            features: filteredFeatures,
+          };
+
+          const selectedArea = L.geoJSON(filteredData, {
+            onEachFeature: (feature, layer) => {
+              const name = feature?.properties?.N03_004 ?? "(no name)";
+              layer.bindPopup(name);
+            },
+          });
+
+          // 初期表示したいなら addTo(map)
+          selectedArea.addTo(map);
+
+          // チェックボックスに追加
+          layerControl.addOverlay(selectedArea, "行政区域（堺市中区）");
+
+          // 表示範囲を合わせる（データがある場合のみ）
+          if (filteredFeatures.length > 0) {
+            map.fitBounds(selectedArea.getBounds());
+          }
+        })
+        .catch((err) => console.error("行政区域GeoJSON 読み込み失敗:", err));
+
+      // =========================
+      // P29（ほかの学校）：LayerGroupに入れてチェックでON/OFF
+      // =========================
+      fetch("./P29-21_27.geojson")
+        .then((r) => {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then((data) => {
+          // いったん空に（リロード/再実行対策）
+          otherSchools.clearLayers();
+
+          // GeoJSONレイヤをそのままLayerGroupへ
+          const p29Layer = L.geoJSON(data, {
+            onEachFeature: (feature, layer) => {
+              const name = feature?.properties?.P29_004 ?? "(no name)";
+              layer.bindPopup(name);
+            },
+          });
+
+          otherSchools.addLayer(p29Layer);
+
+          // チェックボックスに登録（中身が入ってから）
+          layerControl.addOverlay(otherSchools, "ほかの学校（P29）");
+
+          // ★チェックONで「見える場所」に寄せる
+          map.on("overlayadd", (e) => {
+            if (e.layer === otherSchools) {
+              try {
+                map.fitBounds(otherSchools.getBounds());
+              } catch (_) {}
+            }
+          });
+
+          console.log("P29 loaded:", (data.features || []).length, "features");
+        })
+        .catch((err) => console.error("P29-21_27.geojson 読み込み失敗:", err));
+    </script>
+  </body>
+</html>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Leaflet</title>
+
+        <!-- Leaflet CSS -->
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+        />
+
+        <!-- Leaflet JS -->
+        <script
+            src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+        ></script>
+    </head>
+
+    <body>
+        <!-- 地図表示領域 -->
+        <div id="map" style="height: 80vh"></div>
+
+        <script>
+            // =========================
+            // 地図の初期化
+            // =========================
+            const map = L.map('map', {
+                center: [34.544865, 135.506274], // 中百舌鳥付近
+                zoom: 14,
+            });
+
+            // =========================
+            // 背景地図
+            // =========================
+            const osmLayer = L.tileLayer(
+                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                { maxZoom: 19 }
+            );
+
+            const chiriinLayer = L.tileLayer(
+                'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',
+                { maxZoom: 18 }
+            );
+
+            osmLayer.addTo(map);
+
+            // レイヤ切替
+            L.control.layers({
+                'OpenStreetMap': osmLayer,
+                '地理院地図（標準）': chiriinLayer,
+            }).addTo(map);
+
+            // スケールバー
+            L.control.scale().addTo(map);
+
+            // =========================
+            // ステップ10：マーカー表示
+            // =========================
+            const nakamozuMarker = L.marker([34.544865, 135.506274]);
+            nakamozuMarker
+                .bindPopup('なかもずキャンパス C棟')
+                .addTo(map);
+
+            // 省略記法（別地点の例）
+            L.marker([34.592331, 135.505276])
+                .bindPopup('杉本キャンパス')
+                .addTo(map);
+
+
+        </script>
+    </body>
+</html>
