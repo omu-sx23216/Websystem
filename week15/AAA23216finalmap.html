@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AAA23216 Map (Final)</title>
+
+    <!-- Leaflet -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+    <!-- Rainviewer -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/mwasil/Leaflet.Rainviewer/leaflet.rainviewer.css"
+    />
+    <script src="https://cdn.jsdelivr.net/gh/mwasil/Leaflet.Rainviewer/leaflet.rainviewer.js"></script>
+
+    <!-- GPX loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.7.0/gpx.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP",
+          sans-serif;
+      }
+      #map {
+        height: 85vh;
+      }
+      .panel {
+        padding: 10px 12px;
+        font-size: 13px;
+        line-height: 1.4;
+        background: rgba(255, 255, 255, 0.92);
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+      }
+      .panel b {
+        font-size: 14px;
+      }
+      .status-ok {
+        color: #0a7;
+        font-weight: 700;
+      }
+      .status-ng {
+        color: #c00;
+        font-weight: 800;
+      }
+      .panel small {
+        opacity: 0.85;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="map"></div>
+
+    <script>
+      // =========================
+      // 地図の初期化
+      // =========================
+      const map = L.map("map", {
+        center: [34.544865, 135.506274], // 中百舌鳥付近
+        zoom: 14,
+      });
+
+      // =========================
+      // 背景地図（出典表記つき）
+      // =========================
+      const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      });
+
+      const chiriinLayer = L.tileLayer(
+        "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png",
+        {
+          maxZoom: 18,
+          attribution:
+            '<a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル</a>',
+        }
+      );
+
+      // 初期表示
+      osmLayer.addTo(map);
+
+      // レイヤコントロール
+      const baseLayers = {
+        OpenStreetMap: osmLayer,
+        "地理院地図（標準）": chiriinLayer,
+      };
+      const layerControl = L.control.layers(baseLayers, {}).addTo(map);
+
+      // スケールバー
+      L.control.scale().addTo(map);
+
+      // 国土数値情報（出典表記）
+      map.attributionControl.addAttribution(
+        '<a href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P29-v2_0.html">国土数値情報（学校データ P29）</a>'
+      );
+
+      // =========================
+      // 右上パネル（地震の状態表示）
+      // =========================
+      const info = L.control({ position: "topright" });
+      info.onAdd = function () {
+        const div = L.DomUtil.create("div", "panel");
+        div.innerHTML = `
+          <b>AAA23216 Map (Final)</b><br/>
+          <span id="quakeStatus">地震：OFF</span><br/>
+          <small>地震はチェックONで更新（30秒間隔）</small>
+        `;
+        return div;
+      };
+      info.addTo(map);
+
+      function setQuakeStatus(text, ok = true) {
+        const el = document.getElementById("quakeStatus");
+        if (!el) return;
+        el.className = ok ? "status-ok" : "status-ng";
+        el.textContent = text;
+      }
+
+      // =========================
+      // 固定マーカー（常に表示）
+      // =========================
+      L.marker([34.544865, 135.506274])
+        .bindPopup("なかもずキャンパス C棟")
+        .addTo(map);
+
+      L.marker([34.592331, 135.505276])
+        .bindPopup("杉本キャンパス")
+        .addTo(map);
+
+      L.marker([34.686828, 135.539188])
+      34.686828%2C135.539188
+        .bindPopup("森ノ宮キャンパス")
+        .addTo(map);  
+
+      // =========================
+      // ほかの学校（チェックでON/OFF）
+      // =========================
+      const otherSchools = L.layerGroup();
+
+      // =========================
+      // 追加①：ルート（line.geojson）
+      // =========================
+      fetch("./line.geojson")
+        .then((response) => response.json())
+        .then((data) => {
+          const routeLine = L.geoJSON(data, {
+            style: {
+              color: "#FF00FF",
+              weight: 6,
+              opacity: 0.65,
+            },
+          });
+
+          // 初期表示したいなら addTo(map)
+          routeLine.addTo(map);
+
+          layerControl.addOverlay(routeLine, "ルート（line.geojson）");
+        })
+        .catch((err) => console.error("line.geojson 読み込み失敗:", err));
+
+      // =========================
+      // 追加②：雨雲レイヤー（Rainviewer）
+      // =========================
+      L.control
+        .rainviewer({
+          position: "bottomleft",
+          nextButtonText: ">",
+          playStopButtonText: "Play/Stop",
+          prevButtonText: "<",
+          positionSliderLabelText: "Hour:",
+          opacitySliderLabelText: "Opacity:",
+          animationInterval: 500,
+          opacity: 0.5,
+        })
+        .addTo(map);
+
+      // =========================
+      // 追加③：行政区域レイヤー（堺市中区のみ）
+      // =========================
+      fetch("./N03-20230101_27_GML/N03-23_27_230101.geojson")
+        .then((response) => response.json())
+        .then((data) => {
+          const filteredFeatures = (data.features || []).filter(
+            (feature) => feature?.properties?.N03_004 === "堺市中区"
+          );
+
+          const filteredData = {
+            type: "FeatureCollection",
+            features: filteredFeatures,
+          };
+
+          const selectedArea = L.geoJSON(filteredData, {
+            style: { color: "#0088cc", weight: 2, opacity: 0.9, fillOpacity: 0.18 },
+            onEachFeature: (feature, layer) => {
+              const name = feature?.properties?.N03_004 ?? "(no name)";
+              layer.bindPopup(name);
+            },
+          });
+
+          selectedArea.addTo(map);
+          layerControl.addOverlay(selectedArea, "行政区域（堺市中区）");
+
+          if (filteredFeatures.length > 0) {
+            map.fitBounds(selectedArea.getBounds());
+          }
+        })
+        .catch((err) => console.error("行政区域GeoJSON 読み込み失敗:", err));
+
+      // =========================
+      // P29（ほかの学校）：チェックでON/OFF
+      // =========================
+      fetch("./P29-21_27.geojson")
+        .then((r) => {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then((data) => {
+          otherSchools.clearLayers();
+
+          const p29Layer = L.geoJSON(data, {
+            onEachFeature: (feature, layer) => {
+              const name = feature?.properties?.P29_004 ?? "(no name)";
+              layer.bindPopup(name);
+            },
+          });
+
+          otherSchools.addLayer(p29Layer);
+          layerControl.addOverlay(otherSchools, "ほかの学校（P29）");
+
+          map.on("overlayadd", (e) => {
+            if (e.layer === otherSchools) {
+              try {
+                map.fitBounds(otherSchools.getBounds());
+              } catch (_) {}
+            }
+          });
+
+          console.log("P29 loaded:", (data.features || []).length, "features");
+        })
+        .catch((err) => console.error("P29-21_27.geojson 読み込み失敗:", err));
+
+      // ============================================================
+      // 追加④：GPXルート2本（選択ON/OFF + “片方ONで片方OFF”）
+      // 置き場所：week15/ と同じ階層に
+      //   nakamozumorino.gpx
+      //   nakamozusugimo.gpx
+      // ============================================================
+      function addGpxRoute(file, name, style) {
+        const gpx = new L.GPX(file, {
+          async: true,
+          polyline_options: style,
+          marker_options: {
+            startIconUrl: null,
+            endIconUrl: null,
+            shadowUrl: null,
+          },
+        });
+
+        gpx.on("loaded", (e) => {
+          if (map.hasLayer(gpx)) {
+            map.fitBounds(e.target.getBounds().pad(0.2));
+          }
+        });
+
+        layerControl.addOverlay(gpx, name);
+        return gpx;
+      }
+
+      const routeNakamozuMorinomiya = addGpxRoute(
+        "./nakamozumorino.gpx",
+        "ルート：なかもず→森ノ宮（GPX）",
+        { color: "#0033ff", weight: 6, opacity: 0.85 }
+      );
+
+      const routeNakamozuSugimoto = addGpxRoute(
+        "./nakamozusugimo.gpx",
+        "ルート：なかもず→杉本（GPX）",
+        { color: "#FF00FF", weight: 6, opacity: 0.7 }
+      );
+
+      // 片方ONならもう片方OFF（ルート選択を分かりやすくする）
+      map.on("overlayadd", (e) => {
+        if (e.layer === routeNakamozuMorinomiya && map.hasLayer(routeNakamozuSugimoto)) {
+          map.removeLayer(routeNakamozuSugimoto);
+        }
+        if (e.layer === routeNakamozuSugimoto && map.hasLayer(routeNakamozuMorinomiya)) {
+          map.removeLayer(routeNakamozuMorinomiya);
+        }
+
+        if (e.layer === routeNakamozuMorinomiya || e.layer === routeNakamozuSugimoto) {
+          try {
+            map.fitBounds(e.layer.getBounds().pad(0.2));
+          } catch (_) {}
+        }
+      });
+
+      // ============================================================
+      // 追加⑤：地震（リアルタイム風）レイヤー（P2P地震情報API）
+      // チェックONの間だけ30秒ごとに更新
+      // ============================================================
+      const quakeLayer = L.layerGroup();
+      layerControl.addOverlay(quakeLayer, "地震（リアルタイム風）");
+
+      const seenQuakeIds = new Set();
+      let quakePollingTimer = null;
+
+      function fmtScale(scale) {
+        if (scale == null) return "不明";
+        const mapS = {
+          10: "1",
+          20: "2",
+          30: "3",
+          40: "4",
+          45: "5弱",
+          50: "5強",
+          55: "6弱",
+          60: "6強",
+          70: "7",
+        };
+        return mapS[scale] ?? String(scale);
+      }
+
+      function fmtTime(iso) {
+        if (!iso) return "不明";
+        return new Date(iso).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+      }
+
+      function quakeColorByScale(scale) {
+        // 雑に“雰囲気”で色分け（尺度が取れない時は赤）
+        if (scale == null) return "#c00";
+        if (scale >= 60) return "#6a00ff"; // 6強以上
+        if (scale >= 55) return "#a000ff"; // 6弱
+        if (scale >= 50) return "#ff2d2d"; // 5強
+        if (scale >= 45) return "#ff7a00"; // 5弱
+        if (scale >= 40) return "#ffc400"; // 4
+        return "#00a000"; // 1-3
+      }
+
+      async function pollQuakes() {
+        try {
+          const url = "https://api.p2pquake.net/v2/jma/quake?limit=20";
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+
+          const list = await res.json();
+          if (!Array.isArray(list)) return;
+
+          let added = 0;
+
+          for (const item of list) {
+            const id = item?.id;
+            if (!id || seenQuakeIds.has(id)) continue;
+
+            const eq = item?.earthquake ?? {};
+            const h = eq?.hypocenter ?? {};
+            const lat = h.latitude;
+            const lng = h.longitude;
+
+            if (typeof lat !== "number" || typeof lng !== "number") continue;
+
+            const mag = eq?.magnitude ?? null;
+            const depth = h?.depth ?? null;
+            const maxScale = eq?.maxScale ?? null;
+            const place = h?.name ?? "震源地不明";
+            const time = eq?.time ?? null;
+
+            const radius = Math.max(6, Math.min(18, mag ? mag * 2.2 : 8));
+            const col = quakeColorByScale(maxScale);
+
+            const marker = L.circleMarker([lat, lng], {
+              radius,
+              weight: 2,
+              color: col,
+              fillColor: col,
+              fillOpacity: 0.45,
+            });
+
+            marker.bindPopup(
+              `<b>地震情報</b><br>` +
+                `発生: ${fmtTime(time)}<br>` +
+                `震源地: ${place}<br>` +
+                `M: ${mag ?? "不明"} / 深さ: ${depth ?? "不明"}km<br>` +
+                `最大震度: ${fmtScale(maxScale)}<br>` +
+                `<small>Source: P2P地震情報</small>`
+            );
+
+            marker.addTo(quakeLayer);
+            seenQuakeIds.add(id);
+            added++;
+          }
+
+          if (map.hasLayer(quakeLayer)) {
+            setQuakeStatus(`地震：ON（更新中 / 表示 ${quakeLayer.getLayers().length} 件）`, true);
+            if (added > 0) {
+              // 新規追加があれば少しだけ寄せる（うるさくしない）
+              // try { map.fitBounds(quakeLayer.getBounds().pad(0.2)); } catch (_) {}
+            }
+          }
+        } catch (e) {
+          console.error("地震情報取得失敗:", e);
+          if (map.hasLayer(quakeLayer)) {
+            setQuakeStatus("地震：ON（取得失敗）", false);
+          }
+        }
+      }
+
+      function startQuakePolling() {
+        if (quakePollingTimer) return;
+        setQuakeStatus("地震：ON（更新中…）", true);
+        pollQuakes();
+        quakePollingTimer = setInterval(pollQuakes, 30000);
+      }
+
+      function stopQuakePolling() {
+        if (!quakePollingTimer) return;
+        clearInterval(quakePollingTimer);
+        quakePollingTimer = null;
+        setQuakeStatus("地震：OFF", true);
+      }
+
+      map.on("overlayadd", (e) => {
+        if (e.layer === quakeLayer) startQuakePolling();
+      });
+
+      map.on("overlayremove", (e) => {
+        if (e.layer === quakeLayer) stopQuakePolling();
+      });
+
+      // 初期表示で地震をONにしたい場合は↓を有効化
+      // quakeLayer.addTo(map); startQuakePolling();
+    </script>
+  </body>
+</html>
